@@ -393,6 +393,9 @@ function Flashcards({ items, onXP }: { items: VocabItem[]; onXP: (n: number) => 
   const [i, setI] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [known, setKnown] = useState<Set<number>>(new Set());
+  const [images, setImages] = useState<Record<string, string>>({});
+  const [loadingImg, setLoadingImg] = useState<Record<string, boolean>>({});
+  const [imgErr, setImgErr] = useState<Record<string, string>>({});
   const item = items[i];
   useEffect(() => { setFlipped(false); }, [i]);
 
@@ -411,6 +414,38 @@ function Flashcards({ items, onXP }: { items: VocabItem[]; onXP: (n: number) => 
     window.speechSynthesis.speak(utt);
   }
 
+  async function generateImage(v: VocabItem) {
+    if (loadingImg[v.word] || images[v.word]) return;
+    setLoadingImg((p) => ({ ...p, [v.word]: true }));
+    setImgErr((p) => ({ ...p, [v.word]: "" }));
+    try {
+      const res = await fetch("/api/vocab-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          word: v.word,
+          definition: v.definition,
+          example: v.example,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.url) throw new Error(json.error || `HTTP ${res.status}`);
+      setImages((p) => ({ ...p, [v.word]: json.url as string }));
+      onXP(5);
+    } catch (e) {
+      setImgErr((p) => ({
+        ...p,
+        [v.word]: e instanceof Error ? e.message : "Failed",
+      }));
+    } finally {
+      setLoadingImg((p) => ({ ...p, [v.word]: false }));
+    }
+  }
+
+  const currentImg = images[item.word];
+  const isLoadingCurrent = loadingImg[item.word];
+  const currentErr = imgErr[item.word];
+
   return (
     <div className="grid gap-6 md:grid-cols-[1fr_260px]">
       <div>
@@ -424,14 +459,38 @@ function Flashcards({ items, onXP }: { items: VocabItem[]; onXP: (n: number) => 
         >
           {!flipped ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-              <div className="text-6xl">{item.emoji}</div>
+              {currentImg ? (
+                <img
+                  src={currentImg}
+                  alt={item.word}
+                  className="aspect-square h-40 w-40 animate-pop-in rounded-3xl object-cover shadow-md"
+                />
+              ) : isLoadingCurrent ? (
+                <div className="grid aspect-square h-40 w-40 place-items-center rounded-3xl bg-gradient-to-br from-lavender via-primary/40 to-accent">
+                  <div className="text-sm font-bold text-white">Generating…</div>
+                </div>
+              ) : (
+                <div className="text-6xl">{item.emoji}</div>
+              )}
               <div className="text-3xl font-black">{item.word}</div>
               <div className="text-sm text-muted-foreground">{item.pos} · {item.pronunciation}</div>
-              <button
-                onClick={(e) => { e.stopPropagation(); speak(); }}
-                className="mt-2 chip !bg-sky"
-              >🔊 Listen</button>
-              <div className="mt-6 text-xs text-muted-foreground">Tap the card to flip</div>
+              <div className="mt-2 flex flex-wrap justify-center gap-2">
+                <button
+                  onClick={(e) => { e.stopPropagation(); speak(); }}
+                  className="chip !bg-sky"
+                >🔊 Listen</button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); generateImage(item); }}
+                  disabled={isLoadingCurrent || !!currentImg}
+                  className="chip !bg-lavender disabled:opacity-60"
+                >
+                  {currentImg ? "🖼 Image ready" : isLoadingCurrent ? "⏳ Generating…" : "✨ Generate image"}
+                </button>
+              </div>
+              {currentErr && (
+                <div className="text-xs text-destructive">⚠ {currentErr}</div>
+              )}
+              <div className="mt-4 text-xs text-muted-foreground">Tap the card to flip</div>
             </div>
           ) : (
             <div className="flex h-full flex-col justify-center gap-4">
@@ -462,25 +521,42 @@ function Flashcards({ items, onXP }: { items: VocabItem[]; onXP: (n: number) => 
       <aside className="glass-card max-h-96 overflow-y-auto p-3">
         <div className="mb-2 px-2 text-xs font-bold text-muted-foreground">All words</div>
         <ul className="space-y-1">
-          {items.map((v, idx) => (
-            <li key={v.word}>
-              <button
-                onClick={() => setI(idx)}
-                className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition ${
-                  idx === i ? "bg-primary/20 font-bold" : "hover:bg-white"
-                }`}
-              >
-                <span>{v.emoji}</span>
-                <span className="flex-1">{v.word}</span>
-                {known.has(idx) && <span className="text-xs text-success">✓</span>}
-              </button>
-            </li>
-          ))}
+          {items.map((v, idx) => {
+            const img = images[v.word];
+            const busy = loadingImg[v.word];
+            return (
+              <li key={v.word} className="flex items-center gap-1">
+                <button
+                  onClick={() => setI(idx)}
+                  className={`flex flex-1 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition ${
+                    idx === i ? "bg-primary/20 font-bold" : "hover:bg-white"
+                  }`}
+                >
+                  {img ? (
+                    <img src={img} alt="" className="h-6 w-6 rounded-md object-cover" />
+                  ) : (
+                    <span>{v.emoji}</span>
+                  )}
+                  <span className="flex-1 truncate">{v.word}</span>
+                  {known.has(idx) && <span className="text-xs text-success">✓</span>}
+                </button>
+                <button
+                  title="Generate AI image"
+                  onClick={() => generateImage(v)}
+                  disabled={busy || !!img}
+                  className="grid h-8 w-8 place-items-center rounded-lg bg-lavender text-sm disabled:opacity-40"
+                >
+                  {busy ? "⏳" : img ? "✓" : "✨"}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </aside>
     </div>
   );
 }
+
 
 /* ---------------- Matching ---------------- */
 function Matching({ pairs, onXP, onComplete }: { pairs: MatchPair[]; onXP: (n: number) => void; onComplete: () => void }) {

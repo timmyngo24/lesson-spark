@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiVocabImageRouteImport } from './routes/api/vocab-image'
 import { Route as ApiLessonRouteImport } from './routes/api/lesson'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiVocabImageRoute = ApiVocabImageRouteImport.update({
+  id: '/api/vocab-image',
+  path: '/api/vocab-image',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiLessonRoute = ApiLessonRouteImport.update({
@@ -26,27 +32,31 @@ const ApiLessonRoute = ApiLessonRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/lesson': typeof ApiLessonRoute
+  '/api/vocab-image': typeof ApiVocabImageRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/lesson': typeof ApiLessonRoute
+  '/api/vocab-image': typeof ApiVocabImageRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/lesson': typeof ApiLessonRoute
+  '/api/vocab-image': typeof ApiVocabImageRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/lesson'
+  fullPaths: '/' | '/api/lesson' | '/api/vocab-image'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/lesson'
-  id: '__root__' | '/' | '/api/lesson'
+  to: '/' | '/api/lesson' | '/api/vocab-image'
+  id: '__root__' | '/' | '/api/lesson' | '/api/vocab-image'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiLessonRoute: typeof ApiLessonRoute
+  ApiVocabImageRoute: typeof ApiVocabImageRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/vocab-image': {
+      id: '/api/vocab-image'
+      path: '/api/vocab-image'
+      fullPath: '/api/vocab-image'
+      preLoaderRoute: typeof ApiVocabImageRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/lesson': {
@@ -71,6 +88,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiLessonRoute: ApiLessonRoute,
+  ApiVocabImageRoute: ApiVocabImageRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
