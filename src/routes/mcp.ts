@@ -143,7 +143,7 @@ async function handle(msg: JsonRpcRequest, userId: string, base: string): Promis
       const protocolVersion = SUPPORTED_VERSIONS.includes(requested) ? requested : PROTOCOL_VERSION;
       return {
         protocolVersion,
-        capabilities: { tools: { listChanged: false } },
+        capabilities: { tools: {} },
         serverInfo: SERVER_INFO,
         instructions: "Lumi turns any topic into a gamified English lesson. Use create_lesson to make one, get_preview_link to share it.",
       };
@@ -255,24 +255,19 @@ async function callTool(name: string, args: Record<string, unknown>, userId: str
   }
 }
 
-/** Encode a JSON-RPC response. We always reply with application/json: it is
- *  spec-valid (the client's Accept includes it) and, unlike SSE, is delivered
- *  reliably by Vercel's serverless runtime (no stream buffering/truncation).
- *  On initialize we also hand back a Mcp-Session-Id for clients that want one. */
-function encode(body: unknown, _wantsSse: boolean, isInit = false): Response {
-  const headers: Record<string, string> = { ...CORS, "content-type": "application/json" };
-  if (isInit) headers["mcp-session-id"] = randomSessionId();
-  return new Response(JSON.stringify(body), { status: 200, headers });
+/** Encode a JSON-RPC response. Always application/json (spec-valid, and unlike
+ *  SSE it's delivered reliably by Vercel serverless). Fully stateless: we never
+ *  issue an Mcp-Session-Id, which is the correct model for serverless where
+ *  per-session state can't be kept across invocations. */
+function encode(body: unknown, _wantsSse: boolean, _isInit = false): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { ...CORS, "content-type": "application/json" },
+  });
 }
 
 function rpcError(id: string | number | null, code: number, message: string, wantsSse = false) {
   return encode({ jsonrpc: "2.0", id, error: { code, message } }, wantsSse);
-}
-
-function randomSessionId(): string {
-  const a = new Uint8Array(16);
-  crypto.getRandomValues(a);
-  return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 async function logMcp(fields: {
