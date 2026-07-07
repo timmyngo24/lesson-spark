@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getAdminClient } from "@/lib/supabase-admin";
-import { randomToken, verifyPkce, json } from "@/lib/oauth";
+import { randomToken, verifyPkce, json, logEvent } from "@/lib/oauth";
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -30,6 +30,11 @@ export const Route = createFileRoute("/api/oauth/token")({
 
         const body = await parseBody(request).catch(() => ({}) as Record<string, string>);
         const grant = body.grant_type;
+        await logEvent({
+          method: `token:${grant ?? "?"}`,
+          user_agent: request.headers.get("user-agent"),
+          note: `has_code=${!!body.code} has_verifier=${!!body.code_verifier} client=${body.client_id ?? "?"}`,
+        });
 
         if (grant === "authorization_code") {
           const { code, redirect_uri, client_id, code_verifier } = body;
@@ -95,6 +100,7 @@ async function issueToken(
     expires_at,
   });
   if (error) return json({ error: "server_error", error_description: error.message }, 500, CORS);
+  await logEvent({ method: "token:issued", auth_valid: true, note: `client=${client_id}` });
   return json(
     {
       access_token,

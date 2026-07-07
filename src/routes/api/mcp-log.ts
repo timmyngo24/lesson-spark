@@ -19,10 +19,18 @@ export const Route = createFileRoute("/api/mcp-log")({
         if (!admin) return json({ error: "admin not configured" }, 500);
         const { data, error } = await admin
           .from("mcp_debug")
-          .select("ts, method, accept, has_auth, auth_valid, protocol_version, session_id, user_agent")
+          .select("ts, method, accept, has_auth, auth_valid, protocol_version, session_id, user_agent, note")
           .order("ts", { ascending: false })
-          .limit(50);
-        if (error) return json({ error: error.message }, 500);
+          .limit(80);
+        if (error) {
+          if (error.message.includes("mcp_debug")) {
+            return json({
+              error: "table_missing",
+              hint: "Run the CREATE TABLE public.mcp_debug snippet in Supabase SQL Editor, then retry.",
+            });
+          }
+          return json({ error: error.message }, 500);
+        }
         return json({ count: data?.length ?? 0, rows: data ?? [] });
       },
     },

@@ -63,6 +63,26 @@ export async function resolveAccessToken(token: string): Promise<TokenRow | null
   return data as TokenRow;
 }
 
+/** Best-effort debug log to public.mcp_debug (never throws, no secrets). */
+export async function logEvent(row: {
+  method?: string;
+  accept?: string;
+  has_auth?: boolean;
+  auth_valid?: boolean;
+  protocol_version?: string | null;
+  session_id?: string | null;
+  user_agent?: string | null;
+  note?: string;
+}) {
+  try {
+    const admin = getAdminClient();
+    if (!admin) return;
+    await admin.from("mcp_debug").insert(row);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
     status,

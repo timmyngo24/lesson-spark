@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getAdminClient } from "@/lib/supabase-admin";
-import { getBearer, randomToken, json } from "@/lib/oauth";
+import { getBearer, randomToken, json, logEvent } from "@/lib/oauth";
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -67,6 +67,7 @@ export const Route = createFileRoute("/api/oauth/authorize")({
         });
         if (error) return json({ error: "server_error", error_description: error.message }, 500, CORS);
 
+        await logEvent({ method: "authorize:code_minted", auth_valid: true, note: `client=${client_id} redirect=${redirect_uri}` });
         const url = new URL(redirect_uri);
         url.searchParams.set("code", code);
         if (state) url.searchParams.set("state", state);

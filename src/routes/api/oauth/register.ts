@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getAdminClient } from "@/lib/supabase-admin";
-import { randomToken, json } from "@/lib/oauth";
+import { randomToken, json, logEvent } from "@/lib/oauth";
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -47,6 +47,7 @@ export const Route = createFileRoute("/api/oauth/register")({
         });
         if (error) return json({ error: "server_error", error_description: error.message }, 500, CORS);
 
+        await logEvent({ method: "register", user_agent: request.headers.get("user-agent"), note: `redirects=${redirect_uris.join(",")}` });
         return json(
           {
             client_id,
