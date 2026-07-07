@@ -12,7 +12,7 @@ const CORS: Record<string, string> = {
 };
 
 const PROTOCOL_VERSION = "2025-06-18";
-const SUPPORTED_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
+const SUPPORTED_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 const SERVER_INFO = { name: "lumi", title: "Lumi ESL", version: "1.0.0" };
 
 const TOOLS = [
@@ -57,19 +57,9 @@ export const Route = createFileRoute("/mcp")({
           status: 204,
           headers: { ...CORS, "access-control-allow-headers": "content-type, authorization, mcp-protocol-version, mcp-session-id, accept" },
         }),
-      // Some clients (Claude) open a GET SSE stream for server→client messages.
-      // We're stateless: return an empty, immediately-closing SSE stream so the
-      // client is satisfied rather than treating a 405 as an error.
-      GET: async ({ request }) => {
-        const accept = request.headers.get("accept") || "";
-        if (accept.includes("text/event-stream")) {
-          return new Response(": ok\n\n", {
-            status: 200,
-            headers: { ...CORS, "content-type": "text/event-stream", "cache-control": "no-cache" },
-          });
-        }
-        return new Response("Method Not Allowed", { status: 405, headers: { ...CORS, allow: "POST" } });
-      },
+      // Stateless server: we don't offer a server→client SSE stream, so GET is
+      // 405 (spec-allowed). All request/response happens over POST as JSON.
+      GET: async () => new Response("Method Not Allowed", { status: 405, headers: { ...CORS, allow: "POST" } }),
       POST: async ({ request }) => {
         const base = serverBaseUrl(request);
         const wwwAuth = `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource"`;
@@ -135,6 +125,10 @@ type JsonRpcRequest = { jsonrpc: "2.0"; id?: string | number | null; method: str
 async function handleOne(msg: JsonRpcRequest, userId: string, base: string) {
   try {
     const result = await handle(msg, userId, base);
+    if (msg.method === "tools/list") {
+      const n = (result as { tools?: unknown[] }).tools?.length ?? 0;
+      await logMcp({ method: "tools/list:resp", accept: "", has_auth: true, auth_valid: true, protocol_version: null, session_id: null, user_agent: `count=${n}` });
+    }
     return { jsonrpc: "2.0" as const, id: msg.id ?? null, result };
   } catch (e) {
     return { jsonrpc: "2.0" as const, id: msg.id ?? null, error: { code: -32603, message: e instanceof Error ? e.message : "Internal error" } };
@@ -261,19 +255,14 @@ async function callTool(name: string, args: Record<string, unknown>, userId: str
   }
 }
 
-/** Encode a JSON-RPC response as SSE (when the client accepts it) or JSON.
+/** Encode a JSON-RPC response. We always reply with application/json: it is
+ *  spec-valid (the client's Accept includes it) and, unlike SSE, is delivered
+ *  reliably by Vercel's serverless runtime (no stream buffering/truncation).
  *  On initialize we also hand back a Mcp-Session-Id for clients that want one. */
-function encode(body: unknown, wantsSse: boolean, isInit = false): Response {
-  const headers: Record<string, string> = { ...CORS };
+function encode(body: unknown, _wantsSse: boolean, isInit = false): Response {
+  const headers: Record<string, string> = { ...CORS, "content-type": "application/json" };
   if (isInit) headers["mcp-session-id"] = randomSessionId();
-  const text = JSON.stringify(body);
-  if (wantsSse) {
-    headers["content-type"] = "text/event-stream";
-    headers["cache-control"] = "no-cache";
-    return new Response(`event: message\ndata: ${text}\n\n`, { status: 200, headers });
-  }
-  headers["content-type"] = "application/json";
-  return new Response(text, { status: 200, headers });
+  return new Response(JSON.stringify(body), { status: 200, headers });
 }
 
 function rpcError(id: string | number | null, code: number, message: string, wantsSse = false) {
